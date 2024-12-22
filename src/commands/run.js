@@ -4,7 +4,6 @@ import { exec } from 'child_process';
 export default function run() {
   console.log(chalk.blue('Starting a local Polkadot/Substrate node...'));
 
-  // Absolute path to the binary
   const nodeBinary = '/Users/shawncoe/Desktop/Polkadot/CLI/polkadot-sdk/target/release/substrate-node';
 
   // Command to run the node in development mode

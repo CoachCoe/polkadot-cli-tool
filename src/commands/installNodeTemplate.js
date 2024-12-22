@@ -8,7 +8,6 @@ export default function installNodeTemplate() {
 
   console.log(chalk.blue('Installing the Polkadot SDK...'));
 
-  // Start spinner for cloning
   spinner.start('Cloning the Polkadot SDK repository...');
 
   // Clone the Polkadot SDK repository
@@ -20,7 +19,6 @@ export default function installNodeTemplate() {
     }
     spinner.succeed('Polkadot SDK repository cloned successfully!');
 
-    // Start spinner for building
     spinner.start('Building the Polkadot SDK...');
 
     // Build the Polkadot SDK
