@@ -1,7 +1,7 @@
 {
   "name": "polkadot-cli",
   "version": "1.0.0",
-  "type": "module", 
+  "type": "module",
   "description": "A starter CLI tool for developers building on Polkadot",
   "main": "bin/dot-cli.js",
   "bin": {
@@ -17,7 +17,8 @@
   "dependencies": {
     "@polkadot/api": "^9.0.2",
     "chalk": "^4.1.2",
-    "commander": "^11.0.0"
+    "commander": "^11.0.0",
+    "ora": "^8.1.1"
   },
   "devDependencies": {
     "eslint": "^8.48.0",
