@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import chalk from 'chalk';
 import ora from 'ora';
 import path from 'path';
+import { executePlatformCommand } from '../utils/helpers.js'; // Use helper for platform commands
 
 // Utility function for executing shell commands with error handling
 function executeCommand(command, successMessage, errorMessage, spinner) {
@@ -24,11 +25,19 @@ export default async function installNodeTemplate() {
 
   console.log(chalk.blue('Installing the Polkadot SDK...'));
 
-  spinner.start('Cloning the Polkadot SDK repository...');
+  spinner.start('Checking dependencies...');
 
   try {
+    // Check if Git and Cargo are available
+    executePlatformCommand('which git', 'Git is not installed. Please install it and try again.');
+    executePlatformCommand('which cargo', 'Cargo is not installed. Please install Rust and try again.');
+
+    spinner.succeed('Dependencies verified.');
+
     // Define relative path for the SDK
     const sdkClonePath = path.resolve(__dirname, '../../polkadot-sdk');
+
+    spinner.start('Cloning the Polkadot SDK repository...');
 
     // Clone the Polkadot SDK repository
     await executeCommand(
@@ -50,6 +59,7 @@ export default async function installNodeTemplate() {
 
     console.log(chalk.green('Installation complete. You can now use the Polkadot SDK.'));
   } catch (error) {
-    console.error(chalk.red('Installation process encountered errors. Please review the logs above.'));
+    spinner.fail('Installation process encountered errors. Please review the logs above.');
+    console.error(chalk.red('Error during installation:', error.message));
   }
 }
