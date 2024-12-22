@@ -1,26 +1,28 @@
-import chalk from 'chalk';
-import fs from 'fs';
-import path from 'path';
+const path = require('path');
+const fs = require('fs');
 
-export const logInfo = (message) => console.log(chalk.blue(message));
-export const logSuccess = (message) => console.log(chalk.green(message));
-export const logError = (message) => console.error(chalk.red(message));
+function resolvePath(relativePath) {
+  return path.resolve(__dirname, relativePath);
+}
 
-export const createDirectory = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+function createDirectory(dirPath) {
+  const resolvedPath = resolvePath(dirPath);
+  if (!fs.existsSync(resolvedPath)) {
+    fs.mkdirSync(resolvedPath, { recursive: true });
   }
-};
+}
 
-export const writeFile = (filePath, content) => {
-  fs.writeFileSync(filePath, content, 'utf8');
-};
-
-export const readConfigFile = (filePath) => {
-  if (fs.existsSync(filePath)) {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+function readConfigFile(filePath) {
+  const resolvedPath = resolvePath(filePath);
+  if (!fs.existsSync(resolvedPath)) {
+    console.error(`Configuration file not found at ${resolvedPath}`);
+    process.exit(1);
   }
-  return {};
-};
+  return JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'));
+}
 
-export const resolvePath = (relativePath) => path.resolve(process.cwd(), relativePath);
+module.exports = {
+  resolvePath,
+  createDirectory,
+  readConfigFile,
+};

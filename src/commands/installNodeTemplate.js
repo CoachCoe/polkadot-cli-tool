@@ -1,7 +1,7 @@
-// File: src/commands/installNodeTemplate.js
 import { exec } from 'child_process';
 import chalk from 'chalk';
 import ora from 'ora';
+import path from 'path';
 
 export default function installNodeTemplate() {
   const spinner = ora();
@@ -10,8 +10,11 @@ export default function installNodeTemplate() {
 
   spinner.start('Cloning the Polkadot SDK repository...');
 
+  // Define relative path for the SDK
+  const sdkClonePath = path.resolve(__dirname, '../../polkadot-sdk');
+
   // Clone the Polkadot SDK repository
-  exec('git clone https://github.com/paritytech/polkadot-sdk.git', (err, stdout, stderr) => {
+  exec(`git clone https://github.com/paritytech/polkadot-sdk.git ${sdkClonePath}`, (err, stdout, stderr) => {
     if (err) {
       spinner.fail('Failed to clone Polkadot SDK repository.');
       console.error(chalk.red(stderr || err.message));
@@ -22,7 +25,7 @@ export default function installNodeTemplate() {
     spinner.start('Building the Polkadot SDK...');
 
     // Build the Polkadot SDK
-    exec('cd polkadot-sdk && cargo build --release', (err, stdout, stderr) => {
+    exec(`cd ${sdkClonePath} && cargo build --release`, (err, stdout, stderr) => {
       if (err) {
         spinner.fail('Failed to build Polkadot SDK.');
         console.error(chalk.red(stderr || err.message));
