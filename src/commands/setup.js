@@ -1,35 +1,58 @@
 import { exec } from 'child_process';
 import chalk from 'chalk';
+import ora from 'ora';
 
-export default function setup() {
-  console.log(chalk.blue('Setting up your Polkadot development environment...'));
-
-  // Install Rust
-  exec('curl --proto "https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y', (err, stdout, stderr) => {
-    if (err) {
-      console.error(chalk.red('Failed to install Rust:'), err);
-      return;
-    }
-    console.log(chalk.green('Rust installed successfully!'));
-
-    // Install Substrate dependencies using Homebrew for macOS
-    console.log(chalk.blue('Installing Substrate dependencies...'));
-    exec('brew install cmake llvm openssl', (err, stdout, stderr) => {
+// Utility function for executing shell commands with error handling
+function executeCommand(command, successMessage, errorMessage, spinner) {
+  return new Promise((resolve, reject) => {
+    exec(command, (err, stdout, stderr) => {
       if (err) {
-        console.error(chalk.red('Failed to install Substrate dependencies:'), err);
-        return;
+        spinner.fail(errorMessage);
+        console.error(chalk.red(stderr || err.message));
+        reject(err);
+      } else {
+        spinner.succeed(successMessage);
+        resolve(stdout);
       }
-      console.log(chalk.green('Substrate dependencies installed successfully!'));
-
-      // Verify Rust installation
-      exec('rustc --version', (err, stdout, stderr) => {
-        if (err) {
-          console.error(chalk.red('Failed to verify Rust installation:'), err);
-          return;
-        }
-        console.log(chalk.green(`Rust version: ${stdout.trim()}`));
-        console.log(chalk.green('Setup complete! You are ready to build on Polkadot.'));
-      });
     });
   });
-};
+}
+
+export default async function setup() {
+  const spinner = ora();
+
+  console.log(chalk.blue('Setting up your Polkadot development environment...'));
+
+  try {
+    // Install Rust
+    spinner.start('Installing Rust...');
+    await executeCommand(
+      'curl --proto "https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
+      'Rust installed successfully!',
+      'Failed to install Rust.',
+      spinner
+    );
+
+    // Install Substrate dependencies
+    spinner.start('Installing Substrate dependencies...');
+    await executeCommand(
+      'brew install cmake llvm openssl',
+      'Substrate dependencies installed successfully!',
+      'Failed to install Substrate dependencies.',
+      spinner
+    );
+
+    // Verify Rust installation
+    spinner.start('Verifying Rust installation...');
+    await executeCommand(
+      'rustc --version',
+      'Rust installation verified!',
+      'Failed to verify Rust installation.',
+      spinner
+    );
+
+    console.log(chalk.green('Setup complete! You are ready to build on Polkadot.'));
+  } catch (error) {
+    console.error(chalk.red('Setup encountered errors. Please review the logs above.'));
+  }
+}
