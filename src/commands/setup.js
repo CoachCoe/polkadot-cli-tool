@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import chalk from 'chalk';
 import ora from 'ora';
+import { executePlatformCommand } from '../utils/helpers.js'; // Import helper for platform-specific commands
 
 // Utility function for executing shell commands with error handling
 function executeCommand(command, successMessage, errorMessage, spinner) {
@@ -24,19 +25,39 @@ export default async function setup() {
   console.log(chalk.blue('Setting up your Polkadot development environment...'));
 
   try {
-    // Install Rust
+    // Install Rust based on platform
+    const installRustCommand = {
+      darwin: 'curl --proto "https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
+      linux: 'curl --proto "https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
+    };
+
+    const rustCommand = installRustCommand[process.platform];
+    if (!rustCommand) {
+      throw new Error('Unsupported platform for Rust installation');
+    }
+
     spinner.start('Installing Rust...');
     await executeCommand(
-      'curl --proto "https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
+      rustCommand,
       'Rust installed successfully!',
       'Failed to install Rust.',
       spinner
     );
 
-    // Install Substrate dependencies
+    // Install Substrate dependencies based on platform
+    const installDependenciesCommand = {
+      darwin: 'brew install cmake llvm openssl',
+      linux: 'sudo apt install cmake llvm libssl-dev -y',
+    };
+
+    const dependenciesCommand = installDependenciesCommand[process.platform];
+    if (!dependenciesCommand) {
+      throw new Error('Unsupported platform for dependency installation');
+    }
+
     spinner.start('Installing Substrate dependencies...');
     await executeCommand(
-      'brew install cmake llvm openssl',
+      dependenciesCommand,
       'Substrate dependencies installed successfully!',
       'Failed to install Substrate dependencies.',
       spinner
@@ -53,6 +74,7 @@ export default async function setup() {
 
     console.log(chalk.green('Setup complete! You are ready to build on Polkadot.'));
   } catch (error) {
-    console.error(chalk.red('Setup encountered errors. Please review the logs above.'));
+    spinner.fail('Setup encountered errors. Please review the logs above.');
+    console.error(chalk.red('Error during setup:', error.message));
   }
 }
