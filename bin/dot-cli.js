@@ -6,6 +6,7 @@ import createNew from '../src/commands/new.js';
 import run from '../src/commands/run.js';
 import query from '../src/commands/query.js';
 import installNodeTemplate from '../src/commands/installNodeTemplate.js';
+import monitor from '../src/commands/monitor.js';
 
 program
   .name('polkadot-cli')
@@ -36,5 +37,10 @@ program
   .command('install-node-template')
   .description('Install the Substrate Node Template')
   .action(installNodeTemplate);
+
+program
+  .command('monitor')
+  .description('Monitor the chain for suspicious activities')
+  .action(monitor);
 
 program.parse(process.argv);
