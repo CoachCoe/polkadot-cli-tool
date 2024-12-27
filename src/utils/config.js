@@ -1,15 +1,33 @@
-const path = require('path');
+// src/utils/config.js
+export const NODE_URL = 'ws://127.0.0.1:9944';
+export const DEFAULT_PROJECT_PATH = './projects';
+export const TEMPLATE_PATHS = {
+  runtime: './templates/runtime',
+  parachain: './templates/parachain',
+  dApp: './templates/dApp',
+};
 
-module.exports = {
-  NODE_URL: 'ws://127.0.0.1:9944',
-  DEFAULT_PROJECT_PATH: path.join(__dirname, '../../projects'),
-  TEMPLATE_PATHS: {
-    runtime: path.join(__dirname, '../../templates/runtime-template'),
-    parachain: path.join(__dirname, '../../templates/parachain-template'),
-    dapp: path.join(__dirname, '../../templates/dapp-template'),
-  },
-  DEPENDENCIES: {
-    rust: 'curl --proto \'https\' --tlsv1.2 -sSf https://sh.rustup.rs | sh',
-    substrate: 'brew install cmake llvm',
-  },
+// New monitoring configurations
+export const MONITORING_CONFIG = {
+  // Transaction monitoring
+  largeTransferThreshold: BigInt(1000000000000),
+  transactionTimeWindow: 60000, // 1 minute
+  transactionCountThreshold: 10,
+  
+  // Account monitoring
+  newAccountThreshold: 24 * 60 * 60 * 1000, // 24 hours
+  dormancyThreshold: 30 * 24 * 60 * 60 * 1000, // 30 days
+  
+  // Cross-chain monitoring
+  crossChainTransferThreshold: BigInt(500000000000),
+  
+  // Governance monitoring
+  suspiciousVotingThreshold: 5,
+  largeDelegationThreshold: BigInt(100000000000),
+  
+  // Known malicious patterns
+  knownExploitSignatures: [
+    '0x4e487b71', // Panic(uint256)
+    '0x08c379a0'  // Error(string)
+  ]
 };
