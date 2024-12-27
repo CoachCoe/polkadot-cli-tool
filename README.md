@@ -79,3 +79,25 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Project Structure 
+polkadot-cli-tool/
+├── bin/
+│   └── dot-cli.js
+├── src/
+│   ├── commands/
+│   │   ├── monitor.js        
+│   │   ├── new.js  
+|   |   ├── run.js
+|   |   ├── query.js
+|   |   ├── setup.js
+|   |   ├── installNodeTemplate.js
+│   ├── monitoring/           
+│   │   ├── contractMonitor.js
+│   │   ├── accountMonitor.js
+│   │   ├── crossChainMonitor.js
+│   │   ├── governanceMonitor.js
+│   │   └── types.js         
+│   └── utils/
+│       ├── config.js
+│       └── helpers.js
