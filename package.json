@@ -11,7 +11,9 @@
     "start": "node bin/dot-cli.js",
     "lint": "eslint .",
     "test": "mocha",
-    "monitor": "node bin/dot-cli.js monitor"
+    "monitor": "node bin/dot-cli.js monitor",
+    "format": "prettier --write \"src/**/*.js\"",
+    "prepare": "husky install"
   },
   "author": "Shawn",
   "license": "MIT",
@@ -21,10 +23,24 @@
     "commander": "^11.0.0",
     "ora": "^8.1.1",
     "big-integer": "^1.6.51",
-    "evt": "^2.4.15"  // For better event handling
+    "evt": "^2.4.15",
+    "winston": "^3.11.0",
+    "p-retry": "^5.1.2",
+    "date-fns": "^2.30.0",
+    "debug": "^4.3.4"
   },
   "devDependencies": {
     "eslint": "^8.48.0",
-    "mocha": "^10.2.0"
+    "mocha": "^10.2.0",
+    "prettier": "^2.8.8",
+    "husky": "^8.0.3",
+    "lint-staged": "^13.2.3",
+    "jest": "^29.6.2"
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   }
 }
