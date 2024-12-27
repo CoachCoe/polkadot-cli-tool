@@ -1,80 +1,162 @@
-import { exec } from 'child_process';
-import chalk from 'chalk';
+import { executeCommand, startMetrics, endMetrics } from '../utils/helpers.js';
+import Logger from '../utils/logger.js';
 import ora from 'ora';
-import { executePlatformCommand } from '../utils/helpers.js'; // Import helper for platform-specific commands
+import os from 'os';
 
-// Utility function for executing shell commands with error handling
-function executeCommand(command, successMessage, errorMessage, spinner) {
-  return new Promise((resolve, reject) => {
-    exec(command, (err, stdout, stderr) => {
-      if (err) {
-        spinner.fail(errorMessage);
-        console.error(chalk.red(stderr || err.message));
-        reject(err);
-      } else {
-        spinner.succeed(successMessage);
-        resolve(stdout);
-      }
-    });
-  });
+class SetupManager {
+    constructor() {
+        this.platform = os.platform();
+        this.spinner = ora();
+    }
+
+    async checkSystemRequirements() {
+        this.spinner.start('Checking system requirements...');
+        
+        try {
+            const requirements = {
+                node: 'node --version',
+                git: 'git --version',
+                cargo: 'cargo --version'
+            };
+
+            for (const [tool, command] of Object.entries(requirements)) {
+                try {
+                    const { stdout } = await executeCommand(command);
+                    Logger.debug(`${tool} version: ${stdout.trim()}`);
+                } catch {
+                    throw new Error(`${tool} is not installed`);
+                }
+            }
+
+            this.spinner.succeed('System requirements verified');
+        } catch (error) {
+            this.spinner.fail('System requirements check failed');
+            throw error;
+        }
+    }
+
+    async installRust() {
+        this.spinner.start('Installing Rust...');
+        
+        const command = this.platform === 'win32'
+            ? 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
+            : 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y';
+
+        try {
+            await executeCommand(command);
+            await executeCommand('rustup default stable');
+            await executeCommand('rustup target add wasm32-unknown-unknown');
+            
+            this.spinner.succeed('Rust installed successfully');
+        } catch (error) {
+            this.spinner.fail('Rust installation failed');
+            throw error;
+        }
+    }
+
+    async installSubstrateDependencies() {
+        this.spinner.start('Installing Substrate dependencies...');
+        
+        try {
+            switch (this.platform) {
+                case 'darwin':
+                    await this.installMacDependencies();
+                    break;
+                case 'linux':
+                    await this.installLinuxDependencies();
+                    break;
+                case 'win32':
+                    await this.installWindowsDependencies();
+                    break;
+                default:
+                    throw new Error(`Unsupported platform: ${this.platform}`);
+            }
+            
+            this.spinner.succeed('Substrate dependencies installed');
+        } catch (error) {
+            this.spinner.fail('Failed to install Substrate dependencies');
+            throw error;
+        }
+    }
+
+    async installMacDependencies() {
+        const commands = [
+            'brew install cmake',
+            'brew install openssl',
+            'brew install protobuf'
+        ];
+
+        for (const command of commands) {
+            await executeCommand(command);
+        }
+    }
+
+    async installLinuxDependencies() {
+        const commands = [
+            'sudo apt update',
+            'sudo apt install -y cmake pkg-config libssl-dev git clang libclang-dev',
+            'sudo apt install -y build-essential protobuf-compiler'
+        ];
+
+        for (const command of commands) {
+            await executeCommand(command);
+        }
+    }
+
+    async installWindowsDependencies() {
+        // Add Windows-specific dependency installation
+        Logger.warn('Windows support is limited. Some features might not work as expected.');
+    }
+
+    async verifyInstallation() {
+        this.spinner.start('Verifying installation...');
+        
+        try {
+            const checks = [
+                'cargo --version',
+                'rustc --version',
+                'cmake --version'
+            ];
+
+            for (const check of checks) {
+                const { stdout } = await executeCommand(check);
+                Logger.debug(`${check}: ${stdout.trim()}`);
+            }
+
+            this.spinner.succeed('Installation verified successfully');
+        } catch (error) {
+            this.spinner.fail('Installation verification failed');
+            throw error;
+        }
+    }
 }
 
 export default async function setup() {
-  const spinner = ora();
+    const setupManager = new SetupManager();
+    startMetrics('setup');
 
-  console.log(chalk.blue('Setting up your Polkadot development environment...'));
+    try {
+        Logger.info('Starting Polkadot development environment setup...');
+        
+        await setupManager.checkSystemRequirements();
+        await setupManager.installRust();
+        await setupManager.installSubstrateDependencies();
+        await setupManager.verifyInstallation();
 
-  try {
-    // Install Rust based on platform
-    const installRustCommand = {
-      darwin: 'curl --proto "https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
-      linux: 'curl --proto "https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
-    };
-
-    const rustCommand = installRustCommand[process.platform];
-    if (!rustCommand) {
-      throw new Error('Unsupported platform for Rust installation');
+        endMetrics('setup');
+        
+        Logger.success('\nSetup completed successfully! 🎉');
+        Logger.info('\nNext steps:');
+        Logger.info('1. Run polkadot-cli new <type> to create a new project');
+        Logger.info('2. Run polkadot-cli run to start a local node');
+        
+    } catch (error) {
+        Logger.error('Setup failed:', error);
+        Logger.info('\nTroubleshooting tips:');
+        Logger.info('1. Make sure you have admin/sudo privileges');
+        Logger.info('2. Check your internet connection');
+        Logger.info('3. Try running the failed steps manually');
+        Logger.info('4. Check the logs for detailed error information');
+        process.exit(1);
     }
-
-    spinner.start('Installing Rust...');
-    await executeCommand(
-      rustCommand,
-      'Rust installed successfully!',
-      'Failed to install Rust.',
-      spinner
-    );
-
-    // Install Substrate dependencies based on platform
-    const installDependenciesCommand = {
-      darwin: 'brew install cmake llvm openssl',
-      linux: 'sudo apt install cmake llvm libssl-dev -y',
-    };
-
-    const dependenciesCommand = installDependenciesCommand[process.platform];
-    if (!dependenciesCommand) {
-      throw new Error('Unsupported platform for dependency installation');
-    }
-
-    spinner.start('Installing Substrate dependencies...');
-    await executeCommand(
-      dependenciesCommand,
-      'Substrate dependencies installed successfully!',
-      'Failed to install Substrate dependencies.',
-      spinner
-    );
-
-    // Verify Rust installation
-    spinner.start('Verifying Rust installation...');
-    await executeCommand(
-      'rustc --version',
-      'Rust installation verified!',
-      'Failed to verify Rust installation.',
-      spinner
-    );
-
-    console.log(chalk.green('Setup complete! You are ready to build on Polkadot.'));
-  } catch (error) {
-    spinner.fail('Setup encountered errors. Please review the logs above.');
-    console.error(chalk.red('Error during setup:', error.message));
-  }
 }

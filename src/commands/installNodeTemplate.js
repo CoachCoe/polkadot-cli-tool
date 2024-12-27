@@ -1,65 +1,145 @@
-import { exec } from 'child_process';
-import chalk from 'chalk';
+import { executeCommand, startMetrics, endMetrics, resolvePath } from '../utils/helpers.js';
+import Logger from '../utils/logger.js';
 import ora from 'ora';
 import path from 'path';
-import { executePlatformCommand } from '../utils/helpers.js'; // Use helper for platform commands
+import fs from 'fs/promises';
 
-// Utility function for executing shell commands with error handling
-function executeCommand(command, successMessage, errorMessage, spinner) {
-  return new Promise((resolve, reject) => {
-    exec(command, (err, stdout, stderr) => {
-      if (err) {
-        spinner.fail(errorMessage);
-        console.error(chalk.red(stderr || err.message));
-        reject(err);
-      } else {
-        spinner.succeed(successMessage);
-        resolve(stdout);
-      }
-    });
-  });
+class NodeTemplateInstaller {
+    constructor() {
+        this.spinner = ora();
+        this.sdkPath = resolvePath('polkadot-sdk');
+    }
+
+    async checkPrerequisites() {
+        this.spinner.start('Checking prerequisites...');
+        
+        try {
+            // Check for required tools
+            await executeCommand('git --version');
+            await executeCommand('cargo --version');
+            await executeCommand('rustc --version');
+
+            // Check for available disk space
+            await this.checkDiskSpace();
+
+            this.spinner.succeed('Prerequisites verified');
+        } catch (error) {
+            this.spinner.fail('Prerequisites check failed');
+            throw error;
+        }
+    }
+
+    async checkDiskSpace() {
+        // Ensure at least 10GB of free space
+        const requiredSpace = 10 * 1024 * 1024 * 1024; // 10GB in bytes
+        
+        try {
+            // This is a simplified check - you might want to use a package like 'disk-space' for better cross-platform support
+            const { stdout } = await executeCommand('df -k .');
+            const freeSpace = parseInt(stdout.split('\n')[1].split(/\s+/)[3]) * 1024;
+            
+            if (freeSpace < requiredSpace) {
+                throw new Error(`Insufficient disk space. Need at least 10GB free, have ${Math.floor(freeSpace / 1024 / 1024 / 1024)}GB`);
+            }
+        } catch (error) {
+            Logger.warn('Could not verify disk space:', error);
+        }
+    }
+
+    async cloneRepository() {
+        this.spinner.start('Cloning Polkadot SDK repository...');
+        
+        try {
+            // Check if directory exists
+            try {
+                await fs.access(this.sdkPath);
+                this.spinner.info('SDK directory already exists, updating...');
+                await executeCommand('git pull', { cwd: this.sdkPath });
+            } catch {
+                await executeCommand(`git clone --depth 1 https://github.com/paritytech/polkadot-sdk.git ${this.sdkPath}`);
+            }
+
+            this.spinner.succeed('Repository cloned successfully');
+        } catch (error) {
+            this.spinner.fail('Failed to clone repository');
+            throw error;
+        }
+    }
+
+    async buildNode() {
+        this.spinner.start('Building Substrate node...');
+        
+        try {
+            // First, try to use cargo build with feature flags
+            const buildCommand = 'cargo build --release --features fast-runtime';
+            
+            try {
+                await executeCommand(buildCommand, { 
+                    cwd: this.sdkPath,
+                    timeout: 3600000 // 1 hour timeout
+                });
+            } catch (error) {
+                Logger.warn('Fast build failed, falling back to standard build...');
+                await executeCommand('cargo build --release', { 
+                    cwd: this.sdkPath,
+                    timeout: 3600000
+                });
+            }
+
+            this.spinner.succeed('Node built successfully');
+        } catch (error) {
+            this.spinner.fail('Build failed');
+            throw error;
+        }
+    }
+
+    async verifyBuild() {
+        this.spinner.start('Verifying build...');
+        
+        try {
+            const nodePath = path.join(this.sdkPath, 'target', 'release', 'substrate-node');
+            await fs.access(nodePath, fs.constants.X_OK);
+            
+            // Try to run the node with --version
+            const { stdout } = await executeCommand(`${nodePath} --version`);
+            Logger.debug(`Node version: ${stdout.trim()}`);
+
+            this.spinner.succeed('Build verified successfully');
+        } catch (error) {
+            this.spinner.fail('Build verification failed');
+            throw error;
+        }
+    }
 }
 
 export default async function installNodeTemplate() {
-  const spinner = ora();
+    const installer = new NodeTemplateInstaller();
+    startMetrics('install-node-template');
 
-  console.log(chalk.blue('Installing the Polkadot SDK...'));
+    try {
+        Logger.info('Starting Polkadot SDK installation...');
+        
+        await installer.checkPrerequisites();
+        await installer.cloneRepository();
+        await installer.buildNode();
+        await installer.verifyBuild();
 
-  spinner.start('Checking dependencies...');
-
-  try {
-    // Check if Git and Cargo are available
-    executePlatformCommand('which git', 'Git is not installed. Please install it and try again.');
-    executePlatformCommand('which cargo', 'Cargo is not installed. Please install Rust and try again.');
-
-    spinner.succeed('Dependencies verified.');
-
-    // Define relative path for the SDK
-    const sdkClonePath = path.resolve(__dirname, '../../polkadot-sdk');
-
-    spinner.start('Cloning the Polkadot SDK repository...');
-
-    // Clone the Polkadot SDK repository
-    await executeCommand(
-      `git clone https://github.com/paritytech/polkadot-sdk.git ${sdkClonePath}`,
-      'Polkadot SDK repository cloned successfully!',
-      'Failed to clone Polkadot SDK repository.',
-      spinner
-    );
-
-    spinner.start('Building the Polkadot SDK...');
-
-    // Build the Polkadot SDK
-    await executeCommand(
-      `cd ${sdkClonePath} && cargo build --release`,
-      'Polkadot SDK built successfully!',
-      'Failed to build Polkadot SDK.',
-      spinner
-    );
-
-    console.log(chalk.green('Installation complete. You can now use the Polkadot SDK.'));
-  } catch (error) {
-    spinner.fail('Installation process encountered errors. Please review the logs above.');
-    console.error(chalk.red('Error during installation:', error.message));
-  }
+        endMetrics('install-node-template');
+        
+        Logger.success('\nPolkadot SDK installed successfully! 🎉');
+        Logger.info('\nNext steps:');
+        Logger.info('1. Run polkadot-cli run to start your local node');
+        Logger.info('2. Access your node at ws://127.0.0.1:9944');
+        Logger.info('3. Use the Polkadot.js Apps to interact with your node:');
+        Logger.info('   https://polkadot.js.org/apps/?rpc=ws://127.0.0.1:9944');
+        
+    } catch (error) {
+        Logger.error('Installation failed:', error);
+        Logger.info('\nTroubleshooting tips:');
+        Logger.info('1. Check your internet connection');
+        Logger.info('2. Ensure you have enough disk space');
+        Logger.info('3. Try running with sudo/administrator privileges');
+        Logger.info('4. Check the build logs in target/release');
+        process.exit(1);
+    }
 }

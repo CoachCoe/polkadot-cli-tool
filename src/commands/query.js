@@ -1,30 +1,65 @@
-import { ApiPromise, WsProvider } from '@polkadot/api';
-import { NODE_URL } from '../utils/config.js';
-import chalk from 'chalk';
+import { NODE_CONFIG } from '../utils/config.js';
+import Logger from '../utils/logger.js';
+import ConnectionManager from '../utils/connectionManager.js';
+import { startMetrics, endMetrics } from '../utils/helpers.js';
 import ora from 'ora';
 
 export default async function query() {
-  console.log(chalk.blue('Querying the chain state...'));
+    const spinner = ora('Initializing query...').start();
+    startMetrics('query-command');
 
-  const spinner = ora('Connecting to the chain...').start();
+    const connectionManager = new ConnectionManager(NODE_CONFIG.URL);
 
-  try {
-    const provider = new WsProvider(NODE_URL);
-    const api = await ApiPromise.create({ provider });
+    try {
+        spinner.text = 'Connecting to chain...';
+        const api = await connectionManager.connect();
 
-    spinner.succeed('Connected to the chain successfully.');
+        spinner.text = 'Fetching chain data...';
+        const [
+            chain,
+            lastHeader,
+            runtime,
+            properties
+        ] = await Promise.all([
+            api.rpc.system.chain(),
+            api.rpc.chain.getHeader(),
+            api.rpc.state.getRuntimeVersion(),
+            api.rpc.system.properties()
+        ]);
 
-    spinner.start('Fetching chain state...');
+        spinner.succeed('Chain data retrieved successfully');
 
-    const chain = await api.rpc.system.chain();
-    const lastHeader = await api.rpc.chain.getHeader();
+        // Display chain information
+        Logger.info('\nChain Information:');
+        Logger.info(`Chain: ${chain}`);
+        Logger.info(`Last Block: #${lastHeader.number}`);
+        Logger.info(`Runtime Version: ${runtime.specVersion}`);
+        Logger.info(`Transaction Version: ${runtime.transactionVersion}`);
 
-    spinner.succeed('Chain state fetched successfully.');
+        // Display chain properties if available
+        if (properties.size > 0) {
+            Logger.info('\nChain Properties:');
+            properties.forEach((value, key) => {
+                Logger.info(`${key}: ${value.toString()}`);
+            });
+        }
 
-    console.log(chalk.green(`Connected to chain: ${chain}`));
-    console.log(chalk.green(`Last block number: ${lastHeader.number}`));
-  } catch (error) {
-    spinner.fail('Error connecting to the chain or fetching state.');
-    console.error(chalk.red('Error querying the chain state:'), error.message);
-  }
+        // Get and display network state
+        const [health, peers] = await Promise.all([
+            api.rpc.system.health(),
+            api.rpc.system.peers()
+        ]);
+
+        Logger.info('\nNetwork Status:');
+        Logger.info(`Sync Status: ${health.isSyncing ? 'Syncing' : 'Synced'}`);
+        Logger.info(`Peer Count: ${peers.length}`);
+
+        endMetrics('query-command');
+    } catch (error) {
+        spinner.fail('Error querying chain');
+        Logger.error('Failed to query chain:', error);
+        process.exit(1);
+    } finally {
+        await connectionManager.disconnect();
+    }
 }
