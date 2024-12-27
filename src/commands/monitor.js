@@ -1,7 +1,6 @@
-// src/commands/monitor.js
-import { ApiPromise, WsProvider } from '@polkadot/api';
 import { NODE_URL } from '../utils/config.js';
-import { logInfo, logError, logSuccess } from '../utils/helpers.js';
+import Logger from '../utils/logger.js';
+import ConnectionManager from '../utils/connectionManager.js';
 import { ContractMonitor } from '../monitoring/contractMonitor.js';
 import { AccountMonitor } from '../monitoring/accountMonitor.js';
 import { CrossChainMonitor } from '../monitoring/crossChainMonitor.js';
@@ -9,52 +8,103 @@ import { GovernanceMonitor } from '../monitoring/governanceMonitor.js';
 
 class ChainMonitor {
   constructor() {
-    this.contractMonitor = new ContractMonitor();
-    this.accountMonitor = new AccountMonitor();
-    this.crossChainMonitor = new CrossChainMonitor();
-    this.governanceMonitor = new GovernanceMonitor();
+    this.connectionManager = new ConnectionManager(NODE_URL);
+    this.monitors = {
+      contract: new ContractMonitor(),
+      account: new AccountMonitor(),
+      crossChain: new CrossChainMonitor(),
+      governance: new GovernanceMonitor()
+    };
+    this.isRunning = false;
   }
 
   async initialize() {
-    const provider = new WsProvider(NODE_URL);
-    this.api = await ApiPromise.create({ provider });
-    
-    logInfo('Starting blockchain monitoring...');
-    
-    await this.api.rpc.chain.subscribeNewHeads(async (header) => {
-      const blockHash = await this.api.rpc.chain.getBlockHash(header.number.toNumber());
-      const block = await this.api.rpc.chain.getBlock(blockHash);
+    try {
+      await this.connectionManager.connect();
+      this.isRunning = true;
       
-      logInfo(`Monitoring block #${header.number}`);
+      Logger.info('Starting blockchain monitoring...');
       
-      for (const extrinsic of block.block.extrinsics) {
-        await this.analyzeExtrinsic(extrinsic);
+      const api = this.connectionManager.getApi();
+      await this.subscribeToBlocks(api);
+      
+      process.on('SIGINT', this.cleanup.bind(this));
+      process.on('SIGTERM', this.cleanup.bind(this));
+      
+    } catch (error) {
+      Logger.error('Failed to initialize monitoring system:', error);
+      throw error;
+    }
+  }
+
+  async subscribeToBlocks(api) {
+    return api.rpc.chain.subscribeNewHeads(async (header) => {
+      try {
+        const blockHash = await api.rpc.chain.getBlockHash(header.number.toNumber());
+        const block = await api.rpc.chain.getBlock(blockHash);
+        
+        Logger.info(`Processing block #${header.number}`);
+        
+        await this.processBlock(block.block);
+      } catch (error) {
+        Logger.error(`Error processing block ${header.number}:`, error);
       }
     });
   }
 
-  async analyzeExtrinsic(extrinsic) {
+  async processBlock(block) {
+    const startTime = Date.now();
+    
     try {
-      // Run all monitors in parallel
-      await Promise.all([
-        this.contractMonitor.analyzeContractCreation(extrinsic),
-        this.contractMonitor.analyzeContractCall(extrinsic),
-        this.accountMonitor.monitorActivity(extrinsic),
-        this.crossChainMonitor.monitorActivity(extrinsic),
-        this.governanceMonitor.monitorActivity(extrinsic)
-      ]);
+      for (const extrinsic of block.extrinsics) {
+        await this.processExtrinsic(extrinsic);
+      }
+      
+      const duration = Date.now() - startTime;
+      Logger.debug(`Block processing completed in ${duration}ms`);
     } catch (error) {
-      logError(`Error analyzing extrinsic: ${error.message}`);
+      Logger.error('Error processing block:', error);
     }
+  }
+
+  async processExtrinsic(extrinsic) {
+    try {
+      // Process all monitors in parallel
+      await Promise.all(
+        Object.values(this.monitors).map(monitor => 
+          monitor.monitorActivity(extrinsic).catch(error => {
+            Logger.error(`Monitor error: ${error.message}`);
+          })
+        )
+      );
+    } catch (error) {
+      Logger.error(`Error processing extrinsic: ${error.message}`);
+    }
+  }
+
+  async cleanup() {
+    Logger.info('Shutting down monitoring system...');
+    this.isRunning = false;
+    
+    // Pause all monitors
+    Object.values(this.monitors).forEach(monitor => monitor.pause());
+    
+    // Disconnect from the node
+    await this.connectionManager.disconnect();
+    
+    Logger.success('Monitoring system shutdown complete');
+    process.exit(0);
   }
 }
 
 export default async function monitor() {
+  const chainMonitor = new ChainMonitor();
+  
   try {
-    const monitor = new ChainMonitor();
-    await monitor.initialize();
-    logSuccess('Monitoring system initialized successfully. Press Ctrl+C to stop.');
+    await chainMonitor.initialize();
+    Logger.success('Monitoring system initialized successfully. Press Ctrl+C to stop.');
   } catch (error) {
-    logError('Error initializing monitoring system:', error);
+    Logger.error('Failed to start monitoring system:', error);
+    process.exit(1);
   }
 }

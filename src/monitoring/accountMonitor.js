@@ -1,65 +1,145 @@
-// src/monitoring/accountMonitor.js
 import { MONITORING_CONFIG } from '../utils/config.js';
-import { logError, logInfo } from '../utils/helpers.js';
-import { ActivityType } from './types.js';
+import BaseMonitor from './baseMonitor.js';
+import { ActivityType, AlertSeverity, TimeWindows } from './types.js';
+import Logger from '../utils/logger.js';
 
-export class AccountMonitor {
+export class AccountMonitor extends BaseMonitor {
     constructor() {
+        super('AccountMonitor');
         this.accountHistory = new Map();
         this.newAccountThreshold = MONITORING_CONFIG.newAccountThreshold;
         this.dormancyThreshold = MONITORING_CONFIG.dormancyThreshold;
+        
+        // Set up periodic cleanup
+        setInterval(() => this.cleanupOldRecords(), TimeWindows.HOUR);
     }
 
-    async monitorActivity(extrinsic) {
+    async _processActivity(extrinsic) {
         if (!extrinsic.signer) return;
 
         const account = extrinsic.signer.toString();
         const timestamp = Date.now();
 
-        // Check if this is a new account
+        await Promise.all([
+            this.checkNewAccount(account, extrinsic, timestamp),
+            this.checkAccountActivity(account, extrinsic, timestamp),
+            this.trackTransactionPattern(account, extrinsic, timestamp)
+        ]);
+    }
+
+    async checkNewAccount(account, extrinsic, timestamp) {
         if (!this.accountHistory.has(account)) {
             this.accountHistory.set(account, {
                 creationTime: timestamp,
                 lastActivity: timestamp,
-                transactions: []
+                transactions: [],
+                balanceHistory: []
             });
 
             // Monitor new accounts making large transactions
             if (extrinsic.method.section === 'balances') {
                 const amount = extrinsic.method.args[1];
                 if (amount > MONITORING_CONFIG.largeTransferThreshold) {
-                    logError(`${ActivityType.NEW_ACCOUNT_LARGE_TRANSACTION}: Account ${account} made large transaction of ${amount}`);
+                    this.reportAlert({
+                        type: ActivityType.NEW_ACCOUNT_LARGE_TRANSACTION,
+                        severity: AlertSeverity.HIGH,
+                        details: {
+                            account,
+                            amount: amount.toString(),
+                            transactionType: extrinsic.method.method
+                        }
+                    });
                 }
-            }
-        }
-
-        // Check for dormant accounts becoming active
-        const accountData = this.accountHistory.get(account);
-        if (accountData) {
-            const timeSinceLastActivity = timestamp - accountData.lastActivity;
-            if (timeSinceLastActivity > this.dormancyThreshold) {
-                logError(`${ActivityType.DORMANT_ACCOUNT_ACTIVITY}: Account ${account} active after ${timeSinceLastActivity}ms dormancy`);
-            }
-
-            // Update account activity
-            accountData.lastActivity = timestamp;
-            accountData.transactions.push({
-                timestamp,
-                method: `${extrinsic.method.section}.${extrinsic.method.method}`
-            });
-
-            // Prune old transactions
-            const oneHourAgo = timestamp - (60 * 60 * 1000);
-            accountData.transactions = accountData.transactions.filter(tx => tx.timestamp > oneHourAgo);
-
-            // Check for high-frequency trading
-            if (accountData.transactions.length > MONITORING_CONFIG.transactionCountThreshold) {
-                logError(`${ActivityType.HIGH_FREQUENCY_TRADING}: Account ${account} made ${accountData.transactions.length} transactions in the last hour`);
             }
         }
     }
 
-    getAccountStats(account) {
-        return this.accountHistory.get(account);
+    async checkAccountActivity(account, extrinsic, timestamp) {
+        const accountData = this.accountHistory.get(account);
+        if (!accountData) return;
+
+        const timeSinceLastActivity = timestamp - accountData.lastActivity;
+        if (timeSinceLastActivity > this.dormancyThreshold) {
+            this.reportAlert({
+                type: ActivityType.DORMANT_ACCOUNT_ACTIVITY,
+                severity: AlertSeverity.MEDIUM,
+                details: {
+                    account,
+                    dormancyPeriod: timeSinceLastActivity,
+                    lastActivity: new Date(accountData.lastActivity).toISOString()
+                }
+            });
+        }
+
+        // Update account activity
+        accountData.lastActivity = timestamp;
+        accountData.transactions.push({
+            timestamp,
+            method: `${extrinsic.method.section}.${extrinsic.method.method}`,
+            success: true // You might want to check the actual success status
+        });
+    }
+
+    async trackTransactionPattern(account, extrinsic, timestamp) {
+        const accountData = this.accountHistory.get(account);
+        if (!accountData) return;
+
+        // Keep only recent transactions
+        accountData.transactions = accountData.transactions.filter(tx => 
+            timestamp - tx.timestamp < TimeWindows.HOUR
+        );
+
+        // Check for high-frequency trading
+        if (accountData.transactions.length > MONITORING_CONFIG.transactionCountThreshold) {
+            this.reportAlert({
+                type: ActivityType.HIGH_FREQUENCY_TRADING,
+                severity: AlertSeverity.MEDIUM,
+                details: {
+                    account,
+                    transactionCount: accountData.transactions.length,
+                    timeWindow: 'last hour'
+                }
+            });
+        }
+
+        // Check for potential account draining
+        if (extrinsic.method.section === 'balances' && 
+            extrinsic.method.method === 'transfer') {
+            const amount = extrinsic.method.args[1];
+            // You would need to fetch actual account balance here
+            // This is a simplified check
+            if (this.isPotentialDraining(accountData, amount)) {
+                this.reportAlert({
+                    type: ActivityType.ACCOUNT_DRAINING,
+                    severity: AlertSeverity.HIGH,
+                    details: {
+                        account,
+                        amount: amount.toString()
+                    }
+                });
+            }
+        }
+    }
+
+    isPotentialDraining(accountData, amount) {
+        // Implement more sophisticated drain detection
+        // This is a simplified example
+        return amount > MONITORING_CONFIG.largeTransferThreshold;
+    }
+
+    cleanupOldRecords() {
+        const cutoff = Date.now() - TimeWindows.WEEK;
+        for (const [account, data] of this.accountHistory.entries()) {
+            // Remove old transactions
+            data.transactions = data.transactions.filter(tx => 
+                tx.timestamp > cutoff
+            );
+
+            // Remove account history if inactive for a long time
+            if (data.lastActivity < cutoff) {
+                this.accountHistory.delete(account);
+            }
+        }
+        Logger.debug(`Cleaned up account history. Current accounts tracked: ${this.accountHistory.size}`);
     }
 }
