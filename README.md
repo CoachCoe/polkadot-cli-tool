@@ -1,13 +1,14 @@
 # Polkadot CLI Tool
 
 ## Overview
-The Polkadot CLI Tool is a command-line interface designed to streamline the development process for Polkadot and Substrate-based projects. It provides developers with essential commands to set up their environment, create new projects, run local nodes, query the chain state, and install development templates.
+The Polkadot CLI Tool is a command-line interface designed to streamline the development process for Polkadot and Substrate-based projects. It provides developers with essential commands to set up their environment, create new projects, run local nodes, query the chain state, monitor for suspicious activities, and install development templates.
 
 ## Features
 - **Setup**: Quickly set up your development environment with all necessary dependencies.
 - **Create New Projects**: Scaffold new Polkadot projects such as runtimes, parachains, or dApps.
 - **Run Local Node**: Spin up a local Substrate-based node for testing and development.
 - **Query Chain State**: Query blockchain data or submit transactions.
+- **Monitor Chain**: Monitor the blockchain for suspicious activities and potential threats.
 - **Install Node Templates**: Clone and build the Polkadot SDK or other templates for development.
 
 ## Prerequisites
@@ -59,6 +60,12 @@ polkadot-cli run
 Query blockchain data:
 ```bash
 polkadot-cli query
+```
+
+### Monitor the Chain
+Monitor the blockchain for suspicious activities:
+```bash
+polkadot-cli monitor
 ```
 
 ### Install Node Template
