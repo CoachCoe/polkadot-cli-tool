@@ -93,6 +93,7 @@ polkadot-cli-tool/
 |   |   ├── setup.js
 |   |   ├── installNodeTemplate.js
 │   ├── monitoring/           
+│   │   ├── baseMonitor.js
 │   │   ├── contractMonitor.js
 │   │   ├── accountMonitor.js
 │   │   ├── crossChainMonitor.js
