@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node bin/dot-cli.js",
     "lint": "eslint .",
-    "test": "mocha"
+    "test": "mocha",
+    "monitor": "node bin/dot-cli.js monitor"
   },
   "author": "Shawn",
   "license": "MIT",
@@ -19,7 +20,8 @@
     "chalk": "^4.1.2",
     "commander": "^11.0.0",
     "ora": "^8.1.1",
-    "big-integer": "^1.6.51"
+    "big-integer": "^1.6.51",
+    "evt": "^2.4.15"  // For better event handling
   },
   "devDependencies": {
     "eslint": "^8.48.0",
