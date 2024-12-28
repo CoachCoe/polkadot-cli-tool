@@ -21,15 +21,33 @@ class NodeTemplateInstaller {
         ];
     }
 
+    async executeShellCommand(command, options = {}) {
+        return new Promise((resolve, reject) => {
+            Logger.debug(`Executing command: ${command}`);
+            exec(command, { 
+                shell: true, 
+                maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+                ...options 
+            }, (error, stdout, stderr) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                if (stderr) {
+                    Logger.debug(`Command stderr: ${stderr}`);
+                }
+                resolve(stdout.trim());
+            });
+        });
+    }
+
     async checkPrerequisites() {
         this.spinner.start('Checking prerequisites...');
         
         try {
-            // Use which to find cargo
             const cargoPath = await this.executeShellCommand('which cargo');
             Logger.info(`Found cargo at: ${cargoPath}`);
 
-            // Check cargo version
             const cargoVersion = await this.executeShellCommand('cargo --version');
             Logger.info(`Cargo version: ${cargoVersion}`);
 
@@ -38,18 +56,6 @@ class NodeTemplateInstaller {
             this.spinner.fail('Prerequisites check failed');
             throw error;
         }
-    }
-
-    async executeShellCommand(command) {
-        return new Promise((resolve, reject) => {
-            exec(command, { shell: true }, (error, stdout, stderr) => {
-                if (error) {
-                    reject(error);
-                    return;
-                }
-                resolve(stdout.trim());
-            });
-        });
     }
 
     async cloneRepository() {
@@ -75,19 +81,42 @@ class NodeTemplateInstaller {
         this.spinner.start('Building Substrate node...');
         
         try {
-            // Set up environment variables
-            const env = {
-                ...process.env,
-                CARGO_HOME: path.join(this.sdkPath, '.cargo'),
-                RUSTUP_HOME: path.join(this.sdkPath, '.rustup'),
-                PATH: `${path.join(this.sdkPath, '.cargo', 'bin')}:${process.env.PATH}`
-            };
+            // Print directory contents before build
+            Logger.info('Contents of SDK directory before build:');
+            const contents = await this.executeShellCommand(`ls -la "${this.sdkPath}"`);
+            Logger.info(contents);
 
-            // Build command with full path
-            const buildCommand = `cd "${this.sdkPath}" && cargo build --release`;
+            // First, attempt to build polkadot binary
+            const buildCommand = `cd "${this.sdkPath}" && cargo build --release -p polkadot`;
+            Logger.info('Starting build with command:', buildCommand);
             
-            // Execute build
-            await this.executeShellCommand(buildCommand);
+            try {
+                const buildOutput = await this.executeShellCommand(buildCommand, {
+                    cwd: this.sdkPath,
+                    env: {
+                        ...process.env,
+                        CARGO_HOME: path.join(this.sdkPath, '.cargo'),
+                        RUSTUP_HOME: path.join(this.sdkPath, '.rustup'),
+                        PATH: `${path.join(this.sdkPath, '.cargo', 'bin')}:${process.env.PATH}`
+                    }
+                });
+                Logger.debug('Build output:', buildOutput);
+            } catch (error) {
+                Logger.error('Build error:', error);
+                throw error;
+            }
+
+            // Verify build artifacts after build
+            Logger.info('Checking build artifacts...');
+            const targetPath = path.join(this.sdkPath, 'target', 'release');
+            try {
+                await fs.access(targetPath);
+                const targetContents = await this.executeShellCommand(`ls -la "${targetPath}"`);
+                Logger.info('Contents of target/release:', targetContents);
+            } catch (error) {
+                Logger.error('Error accessing target directory:', error);
+                throw new Error('Build appeared to succeed but target directory is missing');
+            }
 
             this.spinner.succeed('Node built successfully');
         } catch (error) {
@@ -101,21 +130,32 @@ class NodeTemplateInstaller {
         const releasePath = path.join(this.sdkPath, 'target', 'release');
         
         try {
-            await fs.access(releasePath);
+            // First, check if the release directory exists
+            try {
+                await fs.access(releasePath);
+            } catch (error) {
+                Logger.error(`Release directory not found at: ${releasePath}`);
+                throw error;
+            }
+
+            // List all files in the release directory
             const files = await fs.readdir(releasePath);
             Logger.info('Files in release directory:', files);
 
+            // Look for each possible binary name
             for (const binaryName of this.possibleBinaryNames) {
                 const binaryPath = path.join(releasePath, binaryName);
                 try {
                     await fs.access(binaryPath, fs.constants.X_OK);
+                    Logger.info(`Found binary: ${binaryPath}`);
                     return binaryPath;
                 } catch {
+                    Logger.debug(`Binary not found at: ${binaryPath}`);
                     continue;
                 }
             }
         } catch (error) {
-            Logger.error('Error reading release directory:', error);
+            Logger.error('Error finding node binary:', error);
             throw new Error('Could not find node binary. Make sure the build completed successfully.');
         }
         
@@ -129,7 +169,6 @@ class NodeTemplateInstaller {
             const nodePath = await this.findNodeBinary();
             Logger.info(`Found node binary at: ${nodePath}`);
             
-            // Try to execute the binary
             const version = await this.executeShellCommand(`"${nodePath}" --version`);
             Logger.info(`Node version: ${version}`);
 
