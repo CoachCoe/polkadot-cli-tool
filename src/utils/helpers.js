@@ -3,7 +3,7 @@ import { exec } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import * as logger from './logger.js';
+import Logger from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +13,7 @@ export async function createDirectory(dirPath) {
     try {
         await fs.mkdir(dirPath, { recursive: true });
     } catch (error) {
-        logger.error(`Failed to create directory: ${dirPath}`, error);
+        Logger.error(`Failed to create directory: ${dirPath}`, error);
         throw error;
     }
 }
@@ -24,7 +24,7 @@ export async function writeFile(filePath, content) {
         await createDirectory(dir);
         await fs.writeFile(filePath, content, 'utf8');
     } catch (error) {
-        logger.error(`Failed to write file: ${filePath}`, error);
+        Logger.error(`Failed to write file: ${filePath}`, error);
         throw error;
     }
 }
@@ -34,7 +34,7 @@ export async function readConfigFile(filePath) {
         const content = await fs.readFile(filePath, 'utf8');
         return JSON.parse(content);
     } catch (error) {
-        logger.error(`Failed to read config file: ${filePath}`, error);
+        Logger.error(`Failed to read config file: ${filePath}`, error);
         throw error;
     }
 }
@@ -49,7 +49,7 @@ export function executeCommand(command, options = {}) {
     return new Promise((resolve, reject) => {
         exec(command, options, (error, stdout, stderr) => {
             if (error) {
-                logger.error(`Command execution failed: ${command}`, error);
+                Logger.error(`Command execution failed: ${command}`, error);
                 reject(error);
                 return;
             }
@@ -62,15 +62,19 @@ export function executeCommand(command, options = {}) {
 const performanceMetrics = new Map();
 
 export function startMetrics(operation) {
-    performanceMetrics.set(operation, process.hrtime());
+    if (process.env.DEBUG) {
+        performanceMetrics.set(operation, process.hrtime());
+    }
 }
 
 export function endMetrics(operation) {
+    if (!process.env.DEBUG) return;
+    
     const start = performanceMetrics.get(operation);
     if (start) {
         const [seconds, nanoseconds] = process.hrtime(start);
         const duration = seconds * 1000 + nanoseconds / 1000000;
-        logger.debug(`Operation '${operation}' took ${duration.toFixed(2)}ms`);
+        console.log(`[DEBUG] Operation '${operation}' took ${duration.toFixed(2)}ms`);
         performanceMetrics.delete(operation);
     }
 }

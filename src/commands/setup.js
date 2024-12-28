@@ -22,7 +22,7 @@ class SetupManager {
             for (const [tool, command] of Object.entries(requirements)) {
                 try {
                     const { stdout } = await executeCommand(command);
-                    Logger.debug(`${tool} version: ${stdout.trim()}`);
+                    console.log(`${tool} version: ${stdout.trim()}`);
                 } catch {
                     throw new Error(`${tool} is not installed`);
                 }
@@ -104,7 +104,6 @@ class SetupManager {
     }
 
     async installWindowsDependencies() {
-        // Add Windows-specific dependency installation
         Logger.warn('Windows support is limited. Some features might not work as expected.');
     }
 
@@ -120,7 +119,7 @@ class SetupManager {
 
             for (const check of checks) {
                 const { stdout } = await executeCommand(check);
-                Logger.debug(`${check}: ${stdout.trim()}`);
+                console.log(`${check}: ${stdout.trim()}`);
             }
 
             this.spinner.succeed('Installation verified successfully');
