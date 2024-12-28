@@ -1,47 +1,60 @@
-import { executeCommand, resolvePath } from '../utils/helpers.js';
+import { executeCommand } from '../utils/helpers.js';
 import Logger from '../utils/logger.js';
 import ora from 'ora';
 import path from 'path';
-import fs from 'fs/promises';
+import { promises as fs } from 'fs';
 
 class NodeRunner {
     constructor() {
-        this.nodeBinary = null;
-        this.nodeProcess = null;
-        this.isRunning = false;
+        this.spinner = ora();
+        this.sdkPath = path.resolve(process.cwd(), 'polkadot-sdk');
+        this.possibleBinaryNames = [
+            'polkadot',
+            'substrate',
+            'substrate-node',
+            'node-template'
+        ];
     }
 
     async initialize() {
-        const spinner = ora('Initializing node runner...').start();
+        this.spinner.start('Initializing node runner...');
 
         try {
-            // Check for node binary in different locations
-            const possiblePaths = [
-                path.resolve(process.cwd(), 'target/release/substrate-node'),
-                path.resolve(process.cwd(), 'polkadot-sdk/target/release/substrate-node'),
-                // Add more possible paths if needed
-            ];
+            this.nodeBinary = await this.findNodeBinary();
+            if (!this.nodeBinary) {
+                throw new Error('Node binary not found. Please build the node first using polkadot-cli install-node-template');
+            }
 
-            for (const path of possiblePaths) {
+            this.spinner.succeed('Node runner initialized');
+            Logger.info(`Using node binary: ${this.nodeBinary}`);
+        } catch (error) {
+            this.spinner.fail('Node binary not found');
+            throw error;
+        }
+    }
+
+    async findNodeBinary() {
+        const releasePath = path.join(this.sdkPath, 'target', 'release');
+        
+        try {
+            await fs.access(releasePath);
+            const files = await fs.readdir(releasePath);
+            Logger.debug('Available binaries:', files);
+
+            for (const binaryName of this.possibleBinaryNames) {
+                const binaryPath = path.join(releasePath, binaryName);
                 try {
-                    await fs.access(path, fs.constants.X_OK);
-                    this.nodeBinary = path;
-                    break;
+                    await fs.access(binaryPath, fs.constants.X_OK);
+                    return binaryPath;
                 } catch {
                     continue;
                 }
             }
-
-            if (!this.nodeBinary) {
-                spinner.fail('Node binary not found');
-                throw new Error('Node binary not found. Please build the node first using polkadot-cli install-node-template');
-            }
-
-            spinner.succeed('Node runner initialized');
         } catch (error) {
-            spinner.fail('Initialization failed');
-            throw error;
+            Logger.debug('Error finding binary:', error);
+            return null;
         }
+        return null;
     }
 
     async startNode(options = {}) {
@@ -53,7 +66,7 @@ class NodeRunner {
             pruning = 'archive'
         } = options;
 
-        const spinner = ora('Starting node...').start();
+        this.spinner.start('Starting node...');
 
         try {
             // Construct node command with options
@@ -69,6 +82,8 @@ class NodeRunner {
                 '--rpc-cors all'
             ].filter(Boolean).join(' ');
 
+            Logger.info('Starting node with command:', command);
+
             // Start the node
             const { stdout, stderr } = await executeCommand(command);
             
@@ -76,40 +91,37 @@ class NodeRunner {
                 Logger.warn('Node startup warnings:', stderr);
             }
 
-            this.isRunning = true;
-            spinner.succeed('Node started successfully');
+            this.spinner.succeed('Node started successfully');
             
             Logger.info('\nNode Information:');
             Logger.info(`Binary: ${this.nodeBinary}`);
             Logger.info(`WebSocket: ws://127.0.0.1:${port}`);
             Logger.info(`RPC: http://127.0.0.1:${rpcPort}`);
-
-            // Handle process termination
-            process.on('SIGINT', this.cleanup.bind(this));
-            process.on('SIGTERM', this.cleanup.bind(this));
+            Logger.info('\nPress Ctrl+C to stop the node');
 
         } catch (error) {
-            spinner.fail('Failed to start node');
-            Logger.error('Node startup error:', error);
+            this.spinner.fail('Failed to start node');
             throw error;
         }
     }
 
     async cleanup() {
-        if (this.isRunning) {
-            Logger.info('Shutting down node...');
-            // Add cleanup logic here
-            this.isRunning = false;
-        }
+        Logger.info('Shutting down node...');
+        // Add cleanup logic here if needed
         process.exit(0);
     }
 }
 
 export default async function run(options = {}) {
+    const runner = new NodeRunner();
+
     try {
-        const runner = new NodeRunner();
         await runner.initialize();
         await runner.startNode(options);
+
+        // Handle process termination
+        process.on('SIGINT', () => runner.cleanup());
+        process.on('SIGTERM', () => runner.cleanup());
     } catch (error) {
         Logger.error('Failed to run node:', error);
         process.exit(1);
