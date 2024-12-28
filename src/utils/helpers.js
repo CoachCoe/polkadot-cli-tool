@@ -44,17 +44,39 @@ export function resolvePath(relativePath) {
     return path.resolve(process.cwd(), relativePath);
 }
 
-// Command Execution
+// Command Execution with enhanced options
 export function executeCommand(command, options = {}) {
     return new Promise((resolve, reject) => {
-        exec(command, options, (error, stdout, stderr) => {
+        const { stdio = 'pipe', env = process.env, ...otherOptions } = options;
+
+        Logger.debug(`Executing command: ${command}`);
+        
+        const childProcess = exec(command, {
+            maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+            stdio,
+            env: {
+                ...env,
+                // Ensure we're using the user's cargo installation
+                PATH: `${env.HOME}/.cargo/bin:${env.PATH}`,
+                RUSTUP_HOME: `${env.HOME}/.rustup`,
+                CARGO_HOME: `${env.HOME}/.cargo`
+            },
+            ...otherOptions
+        }, (error, stdout, stderr) => {
             if (error) {
-                Logger.error(`Command execution failed: ${command}`, error);
+                Logger.error(`Command execution failed: ${command}`);
                 reject(error);
                 return;
             }
-            resolve({ stdout, stderr });
+            if (stderr && stderr.length > 0) {
+                Logger.debug(`Command stderr: ${stderr}`);
+            }
+            resolve({ stdout, stderr, childProcess });
         });
+
+        if (stdio === 'inherit') {
+            return resolve({ childProcess });
+        }
     });
 }
 
@@ -62,46 +84,20 @@ export function executeCommand(command, options = {}) {
 const performanceMetrics = new Map();
 
 export function startMetrics(operation) {
-    if (process.env.DEBUG) {
-        performanceMetrics.set(operation, process.hrtime());
-    }
+    performanceMetrics.set(operation, process.hrtime());
 }
 
 export function endMetrics(operation) {
-    if (!process.env.DEBUG) return;
-    
     const start = performanceMetrics.get(operation);
     if (start) {
         const [seconds, nanoseconds] = process.hrtime(start);
         const duration = seconds * 1000 + nanoseconds / 1000000;
-        console.log(`[DEBUG] Operation '${operation}' took ${duration.toFixed(2)}ms`);
+        Logger.debug(`Operation '${operation}' took ${duration.toFixed(2)}ms`);
         performanceMetrics.delete(operation);
     }
 }
 
-export function executeCommand(command, options = {}) {
-    return new Promise((resolve, reject) => {
-        const { stdio = 'pipe', ...otherOptions } = options;
-        
-        const process = exec(command, {
-            maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-            stdio,
-            ...otherOptions
-        }, (error, stdout, stderr) => {
-            if (error) {
-                reject(error);
-                return;
-            }
-            resolve({ stdout, stderr, process });
-        });
-
-        if (stdio === 'inherit') {
-            return resolve({ process });
-        }
-    });
-}
-
-// Export common constants
+// Common Time Windows
 export const TimeWindows = {
     MINUTE: 60 * 1000,
     HOUR: 60 * 60 * 1000,
