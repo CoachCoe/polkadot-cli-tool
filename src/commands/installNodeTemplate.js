@@ -8,6 +8,13 @@ class NodeTemplateInstaller {
     constructor() {
         this.spinner = ora();
         this.sdkPath = resolvePath('polkadot-sdk');
+        // List of possible binary names in order of preference
+        this.possibleBinaryNames = [
+            'polkadot',
+            'substrate',
+            'substrate-node',
+            'node-template'
+        ];
     }
 
     async checkPrerequisites() {
@@ -70,21 +77,11 @@ class NodeTemplateInstaller {
         this.spinner.start('Building Substrate node...');
         
         try {
-            // First, try to use cargo build with feature flags
-            const buildCommand = 'cargo build --release --features fast-runtime';
-            
-            try {
-                await executeCommand(buildCommand, { 
-                    cwd: this.sdkPath,
-                    timeout: 3600000 // 1 hour timeout
-                });
-            } catch (error) {
-                Logger.warn('Fast build failed, falling back to standard build...');
-                await executeCommand('cargo build --release', { 
-                    cwd: this.sdkPath,
-                    timeout: 3600000
-                });
-            }
+            // Build the substrate-node
+            await executeCommand('cargo build --release', { 
+                cwd: path.join(this.sdkPath, 'substrate'),
+                timeout: 3600000 // 1 hour timeout
+            });
 
             this.spinner.succeed('Node built successfully');
         } catch (error) {
@@ -93,12 +90,30 @@ class NodeTemplateInstaller {
         }
     }
 
+    async findNodeBinary() {
+        const releasePath = path.join(this.sdkPath, 'target', 'release');
+        
+        // Try to find any of the possible binary names
+        for (const binaryName of this.possibleBinaryNames) {
+            const binaryPath = path.join(releasePath, binaryName);
+            try {
+                await fs.access(binaryPath, fs.constants.X_OK);
+                return binaryPath;
+            } catch {
+                continue;
+            }
+        }
+        
+        throw new Error('Could not find node binary. Available files in release directory: ' + 
+            (await fs.readdir(releasePath)).join(', '));
+    }
+
     async verifyBuild() {
         this.spinner.start('Verifying build...');
         
         try {
-            const nodePath = path.join(this.sdkPath, 'target', 'release', 'substrate-node');
-            await fs.access(nodePath, fs.constants.X_OK);
+            const nodePath = await this.findNodeBinary();
+            Logger.debug(`Found node binary at: ${nodePath}`);
             
             // Try to run the node with --version
             const { stdout } = await executeCommand(`${nodePath} --version`);
@@ -107,6 +122,7 @@ class NodeTemplateInstaller {
             this.spinner.succeed('Build verified successfully');
         } catch (error) {
             this.spinner.fail('Build verification failed');
+            Logger.debug('Error details:', error);
             throw error;
         }
     }
