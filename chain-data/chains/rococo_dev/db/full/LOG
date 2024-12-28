@@ -1498,3 +1498,5 @@ Block cache entry stats(count,size,portion): Misc(1,0.00 KB,0%)
 2024/12/28-18:38:59.327926 8487236160 [db/column_family.cc:624] 	(skipping printing options)
 2024/12/28-18:38:59.327942 8487236160 [db/db_impl/db_impl.cc:3200] Created column family [col12] (ID 13)
 2024/12/28-18:39:03.905336 8487236160 [db/db_impl/db_impl_write.cc:2149] [col2] New memtable created with log file: #38. Immutable memtables: 0.
+2024/12/28-18:45:38.242257 6216970240 [db/db_impl/db_impl.cc:490] Shutdown: canceling all background work
+2024/12/28-18:45:38.244448 6216970240 [db/db_impl/db_impl.cc:692] Shutdown complete

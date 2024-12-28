@@ -1076,3 +1076,5 @@ Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, c
 Block cache entry stats(count,size,portion): Misc(1,0.00 KB,0%)
 
 ** File Read Latency Histogram By Level [col4] **
+2024/12/28-18:45:38.176839 6287372288 [db/db_impl/db_impl.cc:490] Shutdown: canceling all background work
+2024/12/28-18:45:38.188389 6287372288 [db/db_impl/db_impl.cc:692] Shutdown complete
