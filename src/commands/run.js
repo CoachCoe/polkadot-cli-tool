@@ -25,10 +25,6 @@ class NodeRunner {
                 throw new Error('Node binary not found. Please build the node first using polkadot-cli install-node-template');
             }
 
-            // Get binary help output to determine available options
-            const helpOutput = await executeCommand(`"${this.nodeBinary}" --help`);
-            Logger.debug('Binary help output:', helpOutput);
-
             this.spinner.succeed('Node runner initialized');
             Logger.info(`Using node binary: ${this.nodeBinary}`);
         } catch (error) {
@@ -64,7 +60,9 @@ class NodeRunner {
     async startNode(options = {}) {
         const {
             name = 'local-node',
-            basePath = path.join(process.cwd(), 'chain-data')
+            basePath = path.join(process.cwd(), 'chain-data'),
+            rpcPort = 9933,
+            wsPort = 9944
         } = options;
 
         this.spinner.start('Starting node...');
@@ -73,39 +71,40 @@ class NodeRunner {
             // Create base path directory if it doesn't exist
             await fs.mkdir(basePath, { recursive: true });
 
-            // Construct node command with correct arguments
+            // Construct node command with correct arguments based on polkadot help output
             const command = [
                 this.nodeBinary,
-                '--dev',  // Run in development mode
-                `--base-path "${basePath}"`,  // Specify where to store chain data
-                '--unsafe-rpc-external',  // Allow external RPC connections
-                '--rpc-cors all',  // Allow all origins for RPC
-                '--unsafe-ws-external',  // Allow external WebSocket connections
+                '--dev',  // Development chain specification
+                `--base-path "${basePath}"`,  // Specify database directory
+                '--unsafe-rpc-external',  // Listen to all RPC interfaces
+                '--rpc-cors all',  // Allow all cross-origin requests
+                `--rpc-port ${rpcPort}`,  // RPC port
+                `--ws-port ${wsPort}`,  // WebSocket port
                 `--name "${name}"`,  // Node name
-                '--validator',  // Run as validator
-                '--prometheus-external',  // Enable Prometheus metrics
                 '--detailed-log-output'  // Detailed logging
             ].filter(Boolean).join(' ');
 
             Logger.info('Starting node with command:', command);
 
-            // Start the node
-            const { stdout, stderr } = await executeCommand(command);
-            
-            if (stderr) {
-                Logger.warn('Node startup warnings:', stderr);
-            }
+            // Execute the command with inheritStdio to see the node output
+            const childProcess = await executeCommand(command, { 
+                stdio: 'inherit',
+                env: {
+                    ...process.env,
+                    RUST_LOG: 'info'
+                }
+            });
 
             this.spinner.succeed('Node started successfully');
             
             Logger.info('\nNode Information:');
             Logger.info(`Binary: ${this.nodeBinary}`);
             Logger.info(`Chain Data: ${basePath}`);
-            Logger.info('WebSocket: ws://127.0.0.1:9944');
-            Logger.info('RPC: http://127.0.0.1:9933');
-            Logger.info('Prometheus: http://127.0.0.1:9615');
+            Logger.info(`WebSocket: ws://127.0.0.1:${wsPort}`);
+            Logger.info(`RPC: http://127.0.0.1:${rpcPort}`);
             Logger.info('\nPress Ctrl+C to stop the node');
 
+            return childProcess;
         } catch (error) {
             this.spinner.fail('Failed to start node');
             throw error;
@@ -124,11 +123,16 @@ export default async function run(options = {}) {
 
     try {
         await runner.initialize();
-        await runner.startNode(options);
+        const nodeProcess = await runner.startNode(options);
 
         // Handle process termination
         process.on('SIGINT', () => runner.cleanup());
         process.on('SIGTERM', () => runner.cleanup());
+
+        // Keep the process running
+        process.stdin.resume();
+
+        return nodeProcess;
     } catch (error) {
         Logger.error('Failed to run node:', error);
         process.exit(1);

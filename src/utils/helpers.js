@@ -79,6 +79,28 @@ export function endMetrics(operation) {
     }
 }
 
+export function executeCommand(command, options = {}) {
+    return new Promise((resolve, reject) => {
+        const { stdio = 'pipe', ...otherOptions } = options;
+        
+        const process = exec(command, {
+            maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+            stdio,
+            ...otherOptions
+        }, (error, stdout, stderr) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve({ stdout, stderr, process });
+        });
+
+        if (stdio === 'inherit') {
+            return resolve({ process });
+        }
+    });
+}
+
 // Export common constants
 export const TimeWindows = {
     MINUTE: 60 * 1000,
