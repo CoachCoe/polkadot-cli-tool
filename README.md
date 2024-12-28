@@ -48,6 +48,12 @@ Scaffold a new project (e.g., parachain):
 ```bash
 polkadot-cli new <type>
 ```
+
+### Build a node 
+```bash
+polkadot-cli install-node-template
+```
+
 Replace `<type>` with `runtime`, `parachain`, or `dApp`.
 
 ### Run a Local Node

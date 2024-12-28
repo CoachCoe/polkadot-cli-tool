@@ -3,3 +3,4 @@ node_modules/
 dist/
 *.log
 src/commands/polkadot-sdk
+*parachain*project*/
