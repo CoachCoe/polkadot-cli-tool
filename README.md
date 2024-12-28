@@ -4,109 +4,131 @@
 The Polkadot CLI Tool is a command-line interface designed to streamline the development process for Polkadot and Substrate-based projects. It provides developers with essential commands to set up their environment, create new projects, run local nodes, query the chain state, monitor for suspicious activities, and install development templates.
 
 ## Features
-- **Setup**: Quickly set up your development environment with all necessary dependencies.
-- **Create New Projects**: Scaffold new Polkadot projects such as runtimes, parachains, or dApps.
-- **Run Local Node**: Spin up a local Substrate-based node for testing and development.
-- **Query Chain State**: Query blockchain data or submit transactions.
-- **Monitor Chain**: Monitor the blockchain for suspicious activities and potential threats.
-- **Install Node Templates**: Clone and build the Polkadot SDK or other templates for development.
+- **Setup**: Quickly set up your development environment with all necessary dependencies
+- **Create New Projects**: Scaffold new Polkadot projects (runtimes, parachains, or dApps)
+- **Node Management**: Build and run a local Polkadot node for development
+- **Chain Interaction**: Query blockchain data and monitor network activity
+- **Security Monitoring**: Advanced monitoring for suspicious activities and potential threats
+- **Development Tools**: Comprehensive utilities for Polkadot/Substrate development
 
 ## Prerequisites
 Ensure the following dependencies are installed on your system:
 - **Node.js** (v16 or higher)
 - **Git**
-- **Rust**
+- **Rust** with `rustup` (will be installed by setup if not present)
+- **Cargo** (Rust's package manager)
 
 ## Installation
 1. Clone this repository:
    ```bash
    git clone https://github.com/CoachCoe/polkadot-cli-tool.git
    ```
+
 2. Navigate to the project directory:
    ```bash
    cd polkadot-cli-tool
    ```
+
 3. Install dependencies:
    ```bash
    npm install
    ```
+
 4. Link the CLI globally:
    ```bash
    npm link
    ```
 
-## Commands
+## Usage Guide
 
-### Setup
-Set up the development environment:
+### Initial Setup
+Set up your development environment:
 ```bash
 polkadot-cli setup
 ```
+This command will:
+- Install Rust and required toolchains if not present
+- Configure Rust for Substrate development
+- Install necessary system dependencies
 
-### Create a New Project
-Scaffold a new project (e.g., parachain):
+### Project Creation
+Create a new project:
 ```bash
 polkadot-cli new <type>
 ```
+Replace `<type>` with:
+- `runtime`: Create a new runtime module
+- `parachain`: Create a new parachain project
+- `dApp`: Create a new decentralized application
 
-### Build a node 
-```bash
-polkadot-cli install-node-template
-```
+### Node Management
+1. Install and build a Polkadot node:
+   ```bash
+   polkadot-cli install-node-template
+   ```
 
-Replace `<type>` with `runtime`, `parachain`, or `dApp`.
+2. Run the local node:
+   ```bash
+   polkadot-cli run
+   ```
+   The node will be accessible at:
+   - RPC: http://127.0.0.1:9933
+   - WebSocket: ws://127.0.0.1:9933
 
-### Run a Local Node
-Start a local Substrate node:
-```bash
-polkadot-cli run
-```
-
-### Query the Chain
-Query blockchain data:
+### Chain Interaction
+Query the blockchain state:
 ```bash
 polkadot-cli query
 ```
 
-### Monitor the Chain
-Monitor the blockchain for suspicious activities:
+### Security Monitoring
+Monitor the chain for suspicious activities:
 ```bash
 polkadot-cli monitor
 ```
+This includes monitoring for:
+- Suspicious transactions
+- Contract vulnerabilities
+- Governance attacks
+- Cross-chain security issues
 
-### Install Node Template
-Clone and build the Polkadot SDK:
-```bash
-polkadot-cli install-node-template
+## Project Structure
 ```
-
-## Contributing
-Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
-
-## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Project Structure 
 polkadot-cli-tool/
 ├── bin/
-│   └── dot-cli.js
+│   └── dot-cli.js          # CLI entry point
 ├── src/
-│   ├── commands/
-│   │   ├── monitor.js        
+│   ├── commands/           # CLI command implementations
+│   │   ├── monitor.js      
 │   │   ├── new.js  
-|   |   ├── run.js
-|   |   ├── query.js
-|   |   ├── setup.js
-|   |   ├── installNodeTemplate.js
-│   ├── monitoring/           
+│   │   ├── run.js
+│   │   ├── query.js
+│   │   ├── setup.js
+│   │   └── installNodeTemplate.js
+│   ├── monitoring/         # Security monitoring modules
 │   │   ├── baseMonitor.js
 │   │   ├── contractMonitor.js
 │   │   ├── accountMonitor.js
 │   │   ├── crossChainMonitor.js
 │   │   ├── governanceMonitor.js
 │   │   └── types.js         
-│   └── utils/
+│   └── utils/              # Shared utilities
 │       ├── config.js
-│       └── helpers.js
-│       └── logger.js
+│       ├── helpers.js
+│       ├── logger.js
 │       └── connectionManager.js
+```
+
+## Troubleshooting
+- If `setup` fails, ensure you have proper system permissions
+- For node build issues, ensure you have sufficient disk space (10GB+ recommended)
+- For runtime errors, check the logs in the chain-data directory
+
+## Contributing
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request with a detailed description
+
+## License
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
