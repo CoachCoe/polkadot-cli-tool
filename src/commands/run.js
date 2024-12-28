@@ -3,6 +3,7 @@ import Logger from '../utils/logger.js';
 import ora from 'ora';
 import path from 'path';
 import { promises as fs } from 'fs';
+import { spawn } from 'child_process';
 
 class NodeRunner {
     constructor() {
@@ -61,8 +62,7 @@ class NodeRunner {
         const {
             name = 'local-node',
             basePath = path.join(process.cwd(), 'chain-data'),
-            rpcPort = 9933,
-            wsPort = 9944
+            rpcPort = 9933
         } = options;
 
         this.spinner.start('Starting node...');
@@ -71,49 +71,79 @@ class NodeRunner {
             // Create base path directory if it doesn't exist
             await fs.mkdir(basePath, { recursive: true });
 
-            // Construct node command with correct arguments based on polkadot help output
-            const command = [
-                this.nodeBinary,
-                '--dev',  // Development chain specification
-                `--base-path "${basePath}"`,  // Specify database directory
-                '--unsafe-rpc-external',  // Listen to all RPC interfaces
-                '--rpc-cors all',  // Allow all cross-origin requests
-                `--rpc-port ${rpcPort}`,  // RPC port
-                `--ws-port ${wsPort}`,  // WebSocket port
-                `--name "${name}"`,  // Node name
+            // Prepare command arguments based on polkadot help output
+            const args = [
+                '--dev',  // Development mode
+                '--base-path', basePath,
+                '--unsafe-rpc-external',  // Allow external RPC
+                '--rpc-cors', 'all',  // Allow all origins
+                '--rpc-port', rpcPort.toString(),
+                '--name', name,
                 '--detailed-log-output'  // Detailed logging
-            ].filter(Boolean).join(' ');
+            ];
 
-            Logger.info('Starting node with command:', command);
+            Logger.info('Starting node with command:', `${this.nodeBinary} ${args.join(' ')}`);
 
-            // Execute the command with inheritStdio to see the node output
-            const childProcess = await executeCommand(command, { 
-                stdio: 'inherit',
+            // Use spawn for better process control
+            const nodeProcess = spawn(this.nodeBinary, args, {
+                stdio: 'pipe',
                 env: {
                     ...process.env,
                     RUST_LOG: 'info'
                 }
             });
 
-            this.spinner.succeed('Node started successfully');
-            
-            Logger.info('\nNode Information:');
-            Logger.info(`Binary: ${this.nodeBinary}`);
-            Logger.info(`Chain Data: ${basePath}`);
-            Logger.info(`WebSocket: ws://127.0.0.1:${wsPort}`);
-            Logger.info(`RPC: http://127.0.0.1:${rpcPort}`);
-            Logger.info('\nPress Ctrl+C to stop the node');
+            // Handle process output
+            nodeProcess.stdout.on('data', (data) => {
+                console.log(data.toString());
+            });
 
-            return childProcess;
+            nodeProcess.stderr.on('data', (data) => {
+                console.error(data.toString());
+            });
+
+            // Handle process events
+            nodeProcess.on('error', (error) => {
+                this.spinner.fail('Node process error');
+                Logger.error('Process error:', error);
+            });
+
+            nodeProcess.on('exit', (code, signal) => {
+                if (code !== null) {
+                    Logger.info(`Node process exited with code ${code}`);
+                } else {
+                    Logger.info(`Node process killed with signal ${signal}`);
+                }
+            });
+
+            // Wait a moment to catch immediate startup errors
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            if (nodeProcess.exitCode === null) {
+                this.spinner.succeed('Node started successfully');
+                
+                Logger.info('\nNode Information:');
+                Logger.info(`Binary: ${this.nodeBinary}`);
+                Logger.info(`Chain Data: ${basePath}`);
+                Logger.info(`WebSocket: ws://127.0.0.1:${rpcPort}`);
+                Logger.info(`RPC: http://127.0.0.1:${rpcPort}`);
+                Logger.info('\nPress Ctrl+C to stop the node');
+            } else {
+                throw new Error(`Node process exited immediately with code ${nodeProcess.exitCode}`);
+            }
+
+            return nodeProcess;
         } catch (error) {
             this.spinner.fail('Failed to start node');
             throw error;
         }
     }
 
-    async cleanup() {
+    cleanup(nodeProcess) {
         Logger.info('Shutting down node...');
-        // Add cleanup logic here if needed
+        if (nodeProcess && !nodeProcess.killed) {
+            nodeProcess.kill();
+        }
         process.exit(0);
     }
 }
@@ -126,13 +156,11 @@ export default async function run(options = {}) {
         const nodeProcess = await runner.startNode(options);
 
         // Handle process termination
-        process.on('SIGINT', () => runner.cleanup());
-        process.on('SIGTERM', () => runner.cleanup());
+        process.on('SIGINT', () => runner.cleanup(nodeProcess));
+        process.on('SIGTERM', () => runner.cleanup(nodeProcess));
 
         // Keep the process running
         process.stdin.resume();
-
-        return nodeProcess;
     } catch (error) {
         Logger.error('Failed to run node:', error);
         process.exit(1);
