@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { program } from 'commander';
+import { Command } from 'commander';
 import setup from '../src/commands/setup.js';
 import createNew from '../src/commands/new.js';
 import run from '../src/commands/run.js';
 import query from '../src/commands/query.js';
 import installNodeTemplate from '../src/commands/installNodeTemplate.js';
 import monitor from '../src/commands/monitor.js';
+
+const program = new Command();
 
 program
   .name('polkadot-cli')
@@ -43,4 +45,4 @@ program
   .description('Monitor the chain for suspicious activities')
   .action(monitor);
 
-program.parse(process.argv);
+program.parse();
