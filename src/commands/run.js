@@ -25,6 +25,10 @@ class NodeRunner {
                 throw new Error('Node binary not found. Please build the node first using polkadot-cli install-node-template');
             }
 
+            // Get binary help output to determine available options
+            const helpOutput = await executeCommand(`"${this.nodeBinary}" --help`);
+            Logger.debug('Binary help output:', helpOutput);
+
             this.spinner.succeed('Node runner initialized');
             Logger.info(`Using node binary: ${this.nodeBinary}`);
         } catch (error) {
@@ -59,27 +63,28 @@ class NodeRunner {
 
     async startNode(options = {}) {
         const {
-            dev = true,
-            port = 9944,
-            rpcPort = 9933,
             name = 'local-node',
-            pruning = 'archive'
+            basePath = path.join(process.cwd(), 'chain-data')
         } = options;
 
         this.spinner.start('Starting node...');
 
         try {
-            // Construct node command with options
+            // Create base path directory if it doesn't exist
+            await fs.mkdir(basePath, { recursive: true });
+
+            // Construct node command with correct arguments
             const command = [
                 this.nodeBinary,
-                dev ? '--dev' : '',
-                `--ws-port ${port}`,
-                `--rpc-port ${rpcPort}`,
-                `--name "${name}"`,
-                `--pruning ${pruning}`,
-                '--ws-external',
-                '--rpc-external',
-                '--rpc-cors all'
+                '--dev',  // Run in development mode
+                `--base-path "${basePath}"`,  // Specify where to store chain data
+                '--unsafe-rpc-external',  // Allow external RPC connections
+                '--rpc-cors all',  // Allow all origins for RPC
+                '--unsafe-ws-external',  // Allow external WebSocket connections
+                `--name "${name}"`,  // Node name
+                '--validator',  // Run as validator
+                '--prometheus-external',  // Enable Prometheus metrics
+                '--detailed-log-output'  // Detailed logging
             ].filter(Boolean).join(' ');
 
             Logger.info('Starting node with command:', command);
@@ -95,8 +100,10 @@ class NodeRunner {
             
             Logger.info('\nNode Information:');
             Logger.info(`Binary: ${this.nodeBinary}`);
-            Logger.info(`WebSocket: ws://127.0.0.1:${port}`);
-            Logger.info(`RPC: http://127.0.0.1:${rpcPort}`);
+            Logger.info(`Chain Data: ${basePath}`);
+            Logger.info('WebSocket: ws://127.0.0.1:9944');
+            Logger.info('RPC: http://127.0.0.1:9933');
+            Logger.info('Prometheus: http://127.0.0.1:9615');
             Logger.info('\nPress Ctrl+C to stop the node');
 
         } catch (error) {
