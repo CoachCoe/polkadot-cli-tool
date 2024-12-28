@@ -6,3 +6,4 @@ dist/
 *parachain*project*/
 package-lock.json
 yarn.lock
+polkadot-sdk
