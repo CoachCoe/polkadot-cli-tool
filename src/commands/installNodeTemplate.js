@@ -7,8 +7,7 @@ import fs from 'fs/promises';
 class NodeTemplateInstaller {
     constructor() {
         this.spinner = ora();
-        this.sdkPath = resolvePath('polkadot-sdk');
-        // List of possible binary names in order of preference
+        this.sdkPath = path.resolve(process.cwd(), 'polkadot-sdk');
         this.possibleBinaryNames = [
             'polkadot',
             'substrate',
@@ -21,12 +20,9 @@ class NodeTemplateInstaller {
         this.spinner.start('Checking prerequisites...');
         
         try {
-            // Check for required tools
             await executeCommand('git --version');
             await executeCommand('cargo --version');
             await executeCommand('rustc --version');
-
-            // Check for available disk space
             await this.checkDiskSpace();
 
             this.spinner.succeed('Prerequisites verified');
@@ -37,11 +33,9 @@ class NodeTemplateInstaller {
     }
 
     async checkDiskSpace() {
-        // Ensure at least 10GB of free space
         const requiredSpace = 10 * 1024 * 1024 * 1024; // 10GB in bytes
         
         try {
-            // This is a simplified check - you might want to use a package like 'disk-space' for better cross-platform support
             const { stdout } = await executeCommand('df -k .');
             const freeSpace = parseInt(stdout.split('\n')[1].split(/\s+/)[3]) * 1024;
             
@@ -57,7 +51,6 @@ class NodeTemplateInstaller {
         this.spinner.start('Cloning Polkadot SDK repository...');
         
         try {
-            // Check if directory exists
             try {
                 await fs.access(this.sdkPath);
                 this.spinner.info('SDK directory already exists, updating...');
@@ -77,15 +70,26 @@ class NodeTemplateInstaller {
         this.spinner.start('Building Substrate node...');
         
         try {
-            // Build the substrate-node
-            await executeCommand('cargo build --release', { 
-                cwd: path.join(this.sdkPath, 'substrate'),
+            // Set the WASM_BUILD_WORKSPACE_HINT environment variable
+            const env = {
+                ...process.env,
+                WASM_BUILD_WORKSPACE_HINT: this.sdkPath,
+                RUST_BACKTRACE: '1'
+            };
+
+            // Change to the SDK directory and build
+            const buildCommand = 'cargo build --release -p substrate-node-cli';
+            
+            await executeCommand(buildCommand, { 
+                cwd: this.sdkPath,
+                env,
                 timeout: 3600000 // 1 hour timeout
             });
 
             this.spinner.succeed('Node built successfully');
         } catch (error) {
             this.spinner.fail('Build failed');
+            Logger.error('Build error details:', error);
             throw error;
         }
     }
@@ -93,19 +97,24 @@ class NodeTemplateInstaller {
     async findNodeBinary() {
         const releasePath = path.join(this.sdkPath, 'target', 'release');
         
-        // Try to find any of the possible binary names
-        for (const binaryName of this.possibleBinaryNames) {
-            const binaryPath = path.join(releasePath, binaryName);
-            try {
-                await fs.access(binaryPath, fs.constants.X_OK);
-                return binaryPath;
-            } catch {
-                continue;
+        try {
+            const files = await fs.readdir(releasePath);
+            Logger.debug('Files in release directory:', files);
+
+            for (const binaryName of this.possibleBinaryNames) {
+                const binaryPath = path.join(releasePath, binaryName);
+                try {
+                    await fs.access(binaryPath, fs.constants.X_OK);
+                    return binaryPath;
+                } catch {
+                    continue;
+                }
             }
+        } catch (error) {
+            Logger.error('Error reading release directory:', error);
         }
         
-        throw new Error('Could not find node binary. Available files in release directory: ' + 
-            (await fs.readdir(releasePath)).join(', '));
+        throw new Error('Could not find node binary in the release directory');
     }
 
     async verifyBuild() {
@@ -115,7 +124,6 @@ class NodeTemplateInstaller {
             const nodePath = await this.findNodeBinary();
             Logger.debug(`Found node binary at: ${nodePath}`);
             
-            // Try to run the node with --version
             const { stdout } = await executeCommand(`${nodePath} --version`);
             Logger.debug(`Node version: ${stdout.trim()}`);
 
@@ -134,6 +142,7 @@ export default async function installNodeTemplate() {
 
     try {
         Logger.info('Starting Polkadot SDK installation...');
+        Logger.info(`Installation directory: ${installer.sdkPath}`);
         
         await installer.checkPrerequisites();
         await installer.cloneRepository();
@@ -156,6 +165,7 @@ export default async function installNodeTemplate() {
         Logger.info('2. Ensure you have enough disk space');
         Logger.info('3. Try running with sudo/administrator privileges');
         Logger.info('4. Check the build logs in target/release');
+        Logger.info('5. Try running from the root of your project directory');
         process.exit(1);
     }
 }
