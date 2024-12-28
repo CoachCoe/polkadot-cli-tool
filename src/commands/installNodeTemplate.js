@@ -66,6 +66,19 @@ class NodeTemplateInstaller {
         }
     }
 
+    async findAvailablePackages() {
+        try {
+            const { stdout } = await executeCommand('cargo tree --workspace', { 
+                cwd: this.sdkPath 
+            });
+            Logger.debug('Available packages:', stdout);
+            return stdout;
+        } catch (error) {
+            Logger.warn('Could not list available packages:', error);
+            return '';
+        }
+    }
+
     async buildNode() {
         this.spinner.start('Building Substrate node...');
         
@@ -77,20 +90,45 @@ class NodeTemplateInstaller {
                 RUST_BACKTRACE: '1'
             };
 
-            // Change to the SDK directory and build
-            const buildCommand = 'cargo build --release -p substrate-node-cli';
-            
-            await executeCommand(buildCommand, { 
+            // First, try to build the substrate node template
+            try {
+                await executeCommand('cargo build --release -p node-template', { 
+                    cwd: path.join(this.sdkPath, 'substrate/bin/node-template'),
+                    env,
+                    timeout: 3600000
+                });
+                return;
+            } catch (error) {
+                Logger.warn('Failed to build node-template, falling back to substrate binary...');
+            }
+
+            // If that fails, try to build substrate binary
+            try {
+                await executeCommand('cargo build --release -p substrate', { 
+                    cwd: path.join(this.sdkPath, 'substrate'),
+                    env,
+                    timeout: 3600000
+                });
+                return;
+            } catch (error) {
+                Logger.warn('Failed to build substrate, attempting to build polkadot...');
+            }
+
+            // If all else fails, try to build polkadot
+            await executeCommand('cargo build --release -p polkadot', { 
                 cwd: this.sdkPath,
                 env,
-                timeout: 3600000 // 1 hour timeout
+                timeout: 3600000
             });
 
             this.spinner.succeed('Node built successfully');
         } catch (error) {
+            // If all build attempts fail, list available packages and throw error
+            const packages = await this.findAvailablePackages();
+            Logger.debug('Available packages in workspace:', packages);
+            
             this.spinner.fail('Build failed');
-            Logger.error('Build error details:', error);
-            throw error;
+            throw new Error(`Build failed. Available packages: ${packages}`);
         }
     }
 
