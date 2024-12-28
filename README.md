@@ -102,3 +102,5 @@ polkadot-cli-tool/
 │   └── utils/
 │       ├── config.js
 │       └── helpers.js
+│       └── logger.js
+│       └── connectionManager.js
