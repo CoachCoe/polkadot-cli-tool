@@ -1,34 +1,34 @@
 import chalk from 'chalk';
 
-class Logger {
-    static info(message) {
+export const Logger = {
+    info(message) {
         console.log(chalk.blue(`[INFO] ${message}`));
-    }
+    },
 
-    static success(message) {
+    success(message) {
         console.log(chalk.green(`[SUCCESS] ${message}`));
-    }
+    },
 
-    static error(message, error = null) {
+    error(message, error = null) {
         console.error(chalk.red(`[ERROR] ${message}`));
         if (error?.stack) {
             console.error(chalk.red(error.stack));
         }
-    }
+    },
 
-    static warn(message) {
+    warn(message) {
         console.warn(chalk.yellow(`[WARNING] ${message}`));
-    }
+    },
 
-    static debug(message) {
+    debug(message) {
         if (process.env.DEBUG) {
             console.log(chalk.gray(`[DEBUG] ${message}`));
         }
-    }
+    },
 
-    static activity(type, details) {
+    activity(type, details) {
         console.log(chalk.magenta(`[ACTIVITY] ${type}: ${JSON.stringify(details)}`));
     }
-}
+};
 
 export default Logger;
