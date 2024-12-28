@@ -2,7 +2,12 @@ import { executeCommand, startMetrics, endMetrics, resolvePath } from '../utils/
 import Logger from '../utils/logger.js';
 import ora from 'ora';
 import path from 'path';
-import fs from 'fs/promises';
+import { promises as fs } from 'fs';
+import { exec } from 'child_process';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 class NodeTemplateInstaller {
     constructor() {
@@ -20,10 +25,13 @@ class NodeTemplateInstaller {
         this.spinner.start('Checking prerequisites...');
         
         try {
-            await executeCommand('git --version');
-            await executeCommand('cargo --version');
-            await executeCommand('rustc --version');
-            await this.checkDiskSpace();
+            // Use which to find cargo
+            const cargoPath = await this.executeShellCommand('which cargo');
+            Logger.info(`Found cargo at: ${cargoPath}`);
+
+            // Check cargo version
+            const cargoVersion = await this.executeShellCommand('cargo --version');
+            Logger.info(`Cargo version: ${cargoVersion}`);
 
             this.spinner.succeed('Prerequisites verified');
         } catch (error) {
@@ -32,19 +40,16 @@ class NodeTemplateInstaller {
         }
     }
 
-    async checkDiskSpace() {
-        const requiredSpace = 10 * 1024 * 1024 * 1024; // 10GB in bytes
-        
-        try {
-            const { stdout } = await executeCommand('df -k .');
-            const freeSpace = parseInt(stdout.split('\n')[1].split(/\s+/)[3]) * 1024;
-            
-            if (freeSpace < requiredSpace) {
-                throw new Error(`Insufficient disk space. Need at least 10GB free, have ${Math.floor(freeSpace / 1024 / 1024 / 1024)}GB`);
-            }
-        } catch (error) {
-            Logger.warn('Could not verify disk space:', error);
-        }
+    async executeShellCommand(command) {
+        return new Promise((resolve, reject) => {
+            exec(command, { shell: true }, (error, stdout, stderr) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve(stdout.trim());
+            });
+        });
     }
 
     async cloneRepository() {
@@ -54,9 +59,9 @@ class NodeTemplateInstaller {
             try {
                 await fs.access(this.sdkPath);
                 this.spinner.info('SDK directory already exists, updating...');
-                await executeCommand('git pull', { cwd: this.sdkPath });
+                await this.executeShellCommand(`cd "${this.sdkPath}" && git pull`);
             } catch {
-                await executeCommand(`git clone --depth 1 https://github.com/paritytech/polkadot-sdk.git ${this.sdkPath}`);
+                await this.executeShellCommand(`git clone --depth 1 https://github.com/paritytech/polkadot-sdk.git "${this.sdkPath}"`);
             }
 
             this.spinner.succeed('Repository cloned successfully');
@@ -66,69 +71,29 @@ class NodeTemplateInstaller {
         }
     }
 
-    async findAvailablePackages() {
-        try {
-            const { stdout } = await executeCommand('cargo tree --workspace', { 
-                cwd: this.sdkPath 
-            });
-            Logger.debug('Available packages:', stdout);
-            return stdout;
-        } catch (error) {
-            Logger.warn('Could not list available packages:', error);
-            return '';
-        }
-    }
-
     async buildNode() {
         this.spinner.start('Building Substrate node...');
         
         try {
-            // Set the WASM_BUILD_WORKSPACE_HINT environment variable
+            // Set up environment variables
             const env = {
                 ...process.env,
-                WASM_BUILD_WORKSPACE_HINT: this.sdkPath,
-                RUST_BACKTRACE: '1'
+                CARGO_HOME: path.join(this.sdkPath, '.cargo'),
+                RUSTUP_HOME: path.join(this.sdkPath, '.rustup'),
+                PATH: `${path.join(this.sdkPath, '.cargo', 'bin')}:${process.env.PATH}`
             };
 
-            // First, try to build the substrate node template
-            try {
-                await executeCommand('cargo build --release -p node-template', { 
-                    cwd: path.join(this.sdkPath, 'substrate/bin/node-template'),
-                    env,
-                    timeout: 3600000
-                });
-                return;
-            } catch (error) {
-                Logger.warn('Failed to build node-template, falling back to substrate binary...');
-            }
-
-            // If that fails, try to build substrate binary
-            try {
-                await executeCommand('cargo build --release -p substrate', { 
-                    cwd: path.join(this.sdkPath, 'substrate'),
-                    env,
-                    timeout: 3600000
-                });
-                return;
-            } catch (error) {
-                Logger.warn('Failed to build substrate, attempting to build polkadot...');
-            }
-
-            // If all else fails, try to build polkadot
-            await executeCommand('cargo build --release -p polkadot', { 
-                cwd: this.sdkPath,
-                env,
-                timeout: 3600000
-            });
+            // Build command with full path
+            const buildCommand = `cd "${this.sdkPath}" && cargo build --release`;
+            
+            // Execute build
+            await this.executeShellCommand(buildCommand);
 
             this.spinner.succeed('Node built successfully');
         } catch (error) {
-            // If all build attempts fail, list available packages and throw error
-            const packages = await this.findAvailablePackages();
-            Logger.debug('Available packages in workspace:', packages);
-            
             this.spinner.fail('Build failed');
-            throw new Error(`Build failed. Available packages: ${packages}`);
+            Logger.error('Build error details:', error);
+            throw error;
         }
     }
 
@@ -136,8 +101,9 @@ class NodeTemplateInstaller {
         const releasePath = path.join(this.sdkPath, 'target', 'release');
         
         try {
+            await fs.access(releasePath);
             const files = await fs.readdir(releasePath);
-            Logger.debug('Files in release directory:', files);
+            Logger.info('Files in release directory:', files);
 
             for (const binaryName of this.possibleBinaryNames) {
                 const binaryPath = path.join(releasePath, binaryName);
@@ -150,9 +116,10 @@ class NodeTemplateInstaller {
             }
         } catch (error) {
             Logger.error('Error reading release directory:', error);
+            throw new Error('Could not find node binary. Make sure the build completed successfully.');
         }
         
-        throw new Error('Could not find node binary in the release directory');
+        throw new Error('No matching binary found in the release directory');
     }
 
     async verifyBuild() {
@@ -160,15 +127,16 @@ class NodeTemplateInstaller {
         
         try {
             const nodePath = await this.findNodeBinary();
-            Logger.debug(`Found node binary at: ${nodePath}`);
+            Logger.info(`Found node binary at: ${nodePath}`);
             
-            const { stdout } = await executeCommand(`${nodePath} --version`);
-            Logger.debug(`Node version: ${stdout.trim()}`);
+            // Try to execute the binary
+            const version = await this.executeShellCommand(`"${nodePath}" --version`);
+            Logger.info(`Node version: ${version}`);
 
             this.spinner.succeed('Build verified successfully');
         } catch (error) {
             this.spinner.fail('Build verification failed');
-            Logger.debug('Error details:', error);
+            Logger.error('Error details:', error);
             throw error;
         }
     }
